@@ -10,12 +10,17 @@ def get_weather(latitude: float, longitude: float) -> str:
     """Get current temperature in Fahrenheit and weather code for given coordinates.
 
     Args:
-        latitude: Latitude coordinate
-        longitude: Longitude coordinate
+        latitude: Latitude coordinate (-90 to 90)
+        longitude: Longitude coordinate (-180 to 180)
 
     Returns:
         JSON string with temperature_fahrenheit and weather_code (do not include the code in your response, translate it to plain English)
     """
+    if not (-90.0 <= latitude <= 90.0):
+        return json.dumps({"error": f"Invalid latitude: {latitude}. Must be between -90 and 90."})
+    if not (-180.0 <= longitude <= 180.0):
+        return json.dumps({"error": f"Invalid longitude: {longitude}. Must be between -180 and 180."})
+
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": latitude,
@@ -24,15 +29,20 @@ def get_weather(latitude: float, longitude: float) -> str:
         "temperature_unit": "fahrenheit"
     }
 
-    weather = requests.get(url, params=params).json()["current"]
-    temperature = weather["temperature_2m"]
-    weather_code = weather["weather_code"]
-    result = {
-        "temperature_fahrenheit": temperature,
-        "weather_code": weather_code
-    }
-
-    return json.dumps(result)
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        current = data.get("current", {})
+        temperature = current.get("temperature_2m")
+        weather_code = current.get("weather_code")
+        result = {
+            "temperature_fahrenheit": temperature,
+            "weather_code": weather_code
+        }
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": f"Failed to retrieve weather: {str(e)}"})
 
 @tool
 def get_user_preferences(user_id: str) -> str:

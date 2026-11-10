@@ -1,4 +1,5 @@
 import sqlite3
+from typing import Optional
 import requests
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
@@ -20,11 +21,18 @@ def show_graph(graph, xray=False):
         print(ascii_diagram)
         return None
 
-def get_engine_for_chinook_db():
-    """Pull sql file, populate in-memory database, and create engine."""
-    url = "https://raw.githubusercontent.com/lerocha/chinook-database/master/ChinookDatabase/DataSources/Chinook_Sqlite.sql"
-    response = requests.get(url)
-    sql_script = response.text
+def get_engine_for_chinook_db(timeout: int = 15, sql_script: Optional[str] = None):
+    """Pull sql file, populate in-memory database, and create engine.
+    
+    Args:
+        timeout: Network timeout in seconds for fetching the schema
+        sql_script: Optional pre-loaded SQL script to bypass remote network calls
+    """
+    if sql_script is None:
+        url = "https://raw.githubusercontent.com/lerocha/chinook-database/master/ChinookDatabase/DataSources/Chinook_Sqlite.sql"
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        sql_script = response.text
 
     connection = sqlite3.connect(":memory:", check_same_thread=False)
     connection.executescript(sql_script)
