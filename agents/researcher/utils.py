@@ -49,9 +49,31 @@ async def get_all_tools():
     return tools
 
 
-def get_notes_from_tool_calls(messages: list[MessageLikeRepresentation]):
-    """Extract notes from tool call messages."""
-    return [tool_msg.content for tool_msg in filter_messages(messages, include_types="tool")]
+def get_notes_from_tool_calls(messages: list[MessageLikeRepresentation]) -> list[str]:
+    """Extract notes from tool call messages with defensive handling."""
+    if not messages:
+        return []
+
+    extracted: list[str] = []
+    seen: set[str] = set()
+
+    for tool_msg in filter_messages(messages, include_types="tool"):
+        raw_content = getattr(tool_msg, "content", None)
+        if raw_content is None:
+            continue
+        if isinstance(raw_content, str):
+            text = raw_content.strip()
+        elif isinstance(raw_content, (dict, list)):
+            import json
+            text = json.dumps(raw_content)
+        else:
+            text = str(raw_content).strip()
+
+        if text and text not in seen:
+            seen.add(text)
+            extracted.append(text)
+
+    return extracted
 
 
 ##########################
