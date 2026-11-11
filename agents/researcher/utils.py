@@ -117,10 +117,19 @@ def openai_websearch_called(response):
         return False
 
 
-async def execute_tool_safely(tool, args):
-    """Safely execute a tool with error handling."""
+async def execute_tool_safely(tool, args, timeout: float | None = 30.0):
+    """Safely execute a tool with missing-tool, timeout, and error handling."""
+    if tool is None:
+        return "Error executing tool: unknown or unregistered tool requested"
+    import asyncio
     try:
-        return await tool.ainvoke(args)
+        coro = tool.ainvoke(args)
+        if timeout is not None and timeout > 0:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        return await coro
+    except asyncio.TimeoutError:
+        tool_name = getattr(tool, "name", repr(tool))
+        return f"Error executing tool '{tool_name}': timed out after {timeout}s"
     except Exception as e:
         return f"Error executing tool: {str(e)}"
 

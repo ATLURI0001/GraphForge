@@ -42,6 +42,7 @@ from agents.researcher.models import (
     SupervisorState,
 )
 from agents.researcher.utils import (
+    execute_tool_safely,
     get_all_tools,
     get_notes_from_tool_calls,
     get_today_str,
@@ -337,14 +338,6 @@ async def researcher(state: ResearcherState, config: RunnableConfig) -> Command[
     )
 
 
-async def execute_tool_safely(tool, args):
-    """Safely execute a tool with error handling."""
-    try:
-        return await tool.ainvoke(args)
-    except Exception as e:
-        return f"Error executing tool: {str(e)}"
-
-
 async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Command[Literal["researcher", "compress_research"]]:
     """Execute tools called by the researcher."""
 
@@ -369,7 +362,7 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Co
 
     tool_calls = most_recent_message.tool_calls
     tool_execution_tasks = [
-        execute_tool_safely(tools_by_name[tool_call["name"]], tool_call["args"])
+        execute_tool_safely(tools_by_name.get(tool_call["name"]), tool_call["args"])
         for tool_call in tool_calls
     ]
     observations = await asyncio.gather(*tool_execution_tasks)
