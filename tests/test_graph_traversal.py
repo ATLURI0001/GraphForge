@@ -88,3 +88,8 @@ def test_get_notes_from_tool_calls_defensive():
     assert notes[:2] == ["Note 1", "Note 2"]
     assert "summary" in notes[2] and "ok" in notes[2]
     assert len(notes) == 3
+
+    from pathlib import Path
+    non_json = ToolMessage.model_construct(content={"b": 2, "a": Path("/tmp/x")}, tool_call_id="call_5")
+    same_reordered = ToolMessage.model_construct(content={"a": Path("/tmp/x"), "b": 2}, tool_call_id="call_6")
+    assert len(get_notes_from_tool_calls([non_json, same_reordered])) == 1

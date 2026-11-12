@@ -1,6 +1,8 @@
 """Simplified utility functions for the Deep Research agent."""
 
+import json
 import logging
+import math
 from datetime import datetime
 
 from langchain_core.messages import (
@@ -64,8 +66,7 @@ def get_notes_from_tool_calls(messages: list[MessageLikeRepresentation]) -> list
         if isinstance(raw_content, str):
             text = raw_content.strip()
         elif isinstance(raw_content, (dict, list)):
-            import json
-            text = json.dumps(raw_content)
+            text = json.dumps(raw_content, sort_keys=True, default=str)
         else:
             text = str(raw_content).strip()
 
@@ -92,7 +93,11 @@ def anthropic_websearch_called(response):
             return False
 
         web_search_requests = server_tool_use.get("web_search_requests")
-        if web_search_requests is None:
+        if (
+            web_search_requests is None
+            or isinstance(web_search_requests, bool)
+            or not isinstance(web_search_requests, (int, float))
+        ):
             return False
 
         return web_search_requests > 0
@@ -109,7 +114,7 @@ def openai_websearch_called(response):
             return False
 
         for tool_output in tool_outputs:
-            if tool_output.get("type") == "web_search_call":
+            if isinstance(tool_output, dict) and tool_output.get("type") == "web_search_call":
                 return True
 
         return False
@@ -121,10 +126,17 @@ async def execute_tool_safely(tool, args, timeout: float | None = 30.0):
     """Safely execute a tool with missing-tool, timeout, and error handling."""
     if tool is None:
         return "Error executing tool: unknown or unregistered tool requested"
+    if timeout is not None and (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        return f"Error executing tool: invalid timeout {timeout!r}"
     import asyncio
     try:
         coro = tool.ainvoke(args)
-        if timeout is not None and timeout > 0:
+        if timeout is not None:
             return await asyncio.wait_for(coro, timeout=timeout)
         return await coro
     except asyncio.TimeoutError:
