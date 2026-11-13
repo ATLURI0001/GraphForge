@@ -36,3 +36,17 @@ def test_override_reducer_raw_override():
     override_payload = {"type": "override"}
     result = override_reducer(["old"], override_payload)
     assert result == override_payload
+
+
+def test_override_reducer_scalar_append_dict_merge_and_none_value():
+    # Appending a scalar to a list
+    assert override_reducer(["a", "b"], "c") == ["a", "b", "c"]
+
+    # Merging dicts
+    assert override_reducer({"x": 1}, {"y": 2}) == {"x": 1, "y": 2}
+
+    # Override with explicit None value returns []
+    assert override_reducer(["old"], {"type": "override", "value": None}) == []
+
+    # Incompatible types fallback to new_value
+    assert override_reducer(42, "string") == "string"
