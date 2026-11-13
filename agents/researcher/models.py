@@ -56,15 +56,23 @@ def override_reducer(current_value, new_value):
     """Reducer function that allows overriding values in state with None-safety."""
     if new_value is None:
         return current_value if current_value is not None else []
-    if current_value is None:
-        if isinstance(new_value, dict) and new_value.get("type") == "override":
-            return new_value.get("value", new_value)
-        return new_value
     if isinstance(new_value, dict) and new_value.get("type") == "override":
-        return new_value.get("value", new_value)
-    if isinstance(current_value, list) and isinstance(new_value, list):
-        return current_value + new_value
-    return operator.add(current_value, new_value)
+        if "value" in new_value:
+            val = new_value["value"]
+            return val if val is not None else []
+        return new_value
+    if current_value is None:
+        return new_value
+    if isinstance(current_value, list):
+        if isinstance(new_value, list):
+            return current_value + new_value
+        return current_value + [new_value]
+    if isinstance(current_value, dict) and isinstance(new_value, dict):
+        return {**current_value, **new_value}
+    try:
+        return operator.add(current_value, new_value)
+    except TypeError:
+        return new_value
     
 class AgentInputState(MessagesState):
     """InputState is only 'messages'."""
