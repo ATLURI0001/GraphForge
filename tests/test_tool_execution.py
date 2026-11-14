@@ -48,3 +48,35 @@ def test_websearch_called_guards_malformed_items_and_booleans():
     assert anthropic_websearch_called(_Resp({"usage": {"server_tool_use": {"web_search_requests": True}}})) is False
     assert anthropic_websearch_called(_Resp({"usage": {"server_tool_use": {"web_search_requests": 2}}})) is True
     assert openai_websearch_called(_Resp(additional_kwargs={"tool_outputs": ["noise", {"type": "web_search_call"}]})) is True
+
+
+@pytest.mark.anyio
+async def test_execute_tool_safely_sync_and_callable():
+    def sync_tool(args):
+        return f"sync:{args.get('v')}"
+
+    class SyncInvokable:
+        name = "sync_invokable"
+        def invoke(self, args):
+            return f"invoke:{args.get('v')}"
+
+    res_fn = await execute_tool_safely(sync_tool, {"v": 123}, timeout=1.0)
+    assert res_fn == "sync:123"
+
+    res_inv = await execute_tool_safely(SyncInvokable(), {"v": 456}, timeout=1.0)
+    assert res_inv == "invoke:456"
+
+    not_callable = await execute_tool_safely("not_a_tool", {"v": 1})
+    assert "neither invokable nor callable" in not_callable
+
+
+def test_openai_websearch_called_tool_calls_and_none():
+    assert openai_websearch_called(None) is False
+
+    class _ToolCallResp:
+        def __init__(self, tool_calls):
+            self.tool_calls = tool_calls
+
+    assert openai_websearch_called(_ToolCallResp([{"name": "web_search_preview"}])) is True
+    assert openai_websearch_called(_ToolCallResp([{"name": "other_tool"}])) is False
+

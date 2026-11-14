@@ -64,9 +64,17 @@ def override_reducer(current_value, new_value):
     if current_value is None:
         return new_value
     if isinstance(current_value, list):
-        if isinstance(new_value, list):
-            return current_value + new_value
+        if isinstance(new_value, (list, tuple)):
+            return current_value + list(new_value)
         return current_value + [new_value]
+    if isinstance(current_value, tuple):
+        if isinstance(new_value, (list, tuple)):
+            return current_value + tuple(new_value)
+        return current_value + (new_value,)
+    if isinstance(current_value, set):
+        if isinstance(new_value, (set, list, tuple, frozenset)):
+            return current_value | set(new_value)
+        return current_value | {new_value}
     if isinstance(current_value, dict) and isinstance(new_value, dict):
         return {**current_value, **new_value}
     try:
