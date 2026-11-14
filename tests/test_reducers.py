@@ -50,3 +50,15 @@ def test_override_reducer_scalar_append_dict_merge_and_none_value():
 
     # Incompatible types fallback to new_value
     assert override_reducer(42, "string") == "string"
+
+
+def test_override_reducer_tuples_and_sets():
+    # Tuple concatenation and scalar append
+    assert override_reducer(("a", "b"), ("c", "d")) == ("a", "b", "c", "d")
+    assert override_reducer(("a", "b"), ["c", "d"]) == ("a", "b", "c", "d")
+    assert override_reducer(("a", "b"), "c") == ("a", "b", "c")
+
+    # Set union and scalar append
+    assert override_reducer({"x", "y"}, {"y", "z"}) == {"x", "y", "z"}
+    assert override_reducer({"x", "y"}, ["z", "w"]) == {"x", "y", "z", "w"}
+    assert override_reducer({"x"}, "y") == {"x", "y"}

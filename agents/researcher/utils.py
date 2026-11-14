@@ -108,14 +108,21 @@ def anthropic_websearch_called(response):
 
 def openai_websearch_called(response):
     """Detect if OpenAI's web search was used."""
+    if response is None:
+        return False
     try:
-        tool_outputs = response.additional_kwargs.get("tool_outputs")
-        if not tool_outputs:
-            return False
+        additional_kwargs = getattr(response, "additional_kwargs", {}) or {}
+        tool_outputs = additional_kwargs.get("tool_outputs")
+        if isinstance(tool_outputs, list):
+            for tool_output in tool_outputs:
+                if isinstance(tool_output, dict) and tool_output.get("type") == "web_search_call":
+                    return True
 
-        for tool_output in tool_outputs:
-            if isinstance(tool_output, dict) and tool_output.get("type") == "web_search_call":
-                return True
+        tool_calls = getattr(response, "tool_calls", None)
+        if isinstance(tool_calls, list):
+            for call in tool_calls:
+                if isinstance(call, dict) and call.get("name") in ("web_search_preview", "web_search"):
+                    return True
 
         return False
     except (AttributeError, TypeError):
@@ -123,7 +130,7 @@ def openai_websearch_called(response):
 
 
 async def execute_tool_safely(tool, args, timeout: float | None = 30.0):
-    """Safely execute a tool with missing-tool, timeout, and error handling."""
+    """Safely execute a tool with missing-tool, timeout, sync/async invocation, and error handling."""
     if tool is None:
         return "Error executing tool: unknown or unregistered tool requested"
     if timeout is not None and (
@@ -135,7 +142,15 @@ async def execute_tool_safely(tool, args, timeout: float | None = 30.0):
         return f"Error executing tool: invalid timeout {timeout!r}"
     import asyncio
     try:
-        coro = tool.ainvoke(args)
+        if hasattr(tool, "ainvoke"):
+            coro = tool.ainvoke(args)
+        elif hasattr(tool, "invoke"):
+            coro = asyncio.to_thread(tool.invoke, args)
+        elif callable(tool):
+            coro = asyncio.to_thread(tool, args)
+        else:
+            return "Error executing tool: tool is neither invokable nor callable"
+
         if timeout is not None:
             return await asyncio.wait_for(coro, timeout=timeout)
         return await coro
