@@ -129,6 +129,36 @@ def openai_websearch_called(response):
         return False
 
 
+def gemini_websearch_called(response) -> bool:
+    """Detect if Google Gemini's native web search grounding was used."""
+    if response is None:
+        return False
+    try:
+        meta = getattr(response, "response_metadata", {}) or {}
+        if meta.get("grounding_metadata") or meta.get("groundingMetadata"):
+            return True
+        kwargs = getattr(response, "additional_kwargs", {}) or {}
+        if kwargs.get("grounding_metadata") or kwargs.get("groundingMetadata"):
+            return True
+        tool_calls = getattr(response, "tool_calls", None)
+        if isinstance(tool_calls, list):
+            for call in tool_calls:
+                if isinstance(call, dict) and call.get("name") in ("google_search", "google_search_retrieval"):
+                    return True
+        return False
+    except (AttributeError, TypeError):
+        return False
+
+
+def is_websearch_called(response) -> bool:
+    """Unified detector for provider-native web search usage (Anthropic, OpenAI, Gemini)."""
+    return (
+        anthropic_websearch_called(response)
+        or openai_websearch_called(response)
+        or gemini_websearch_called(response)
+    )
+
+
 async def execute_tool_safely(tool, args, timeout: float | None = 30.0):
     """Safely execute a tool with missing-tool, timeout, sync/async invocation, and error handling."""
     if tool is None:

@@ -4,6 +4,8 @@ from langchain_core.messages import ToolMessage
 from agents.researcher.utils import (
     anthropic_websearch_called,
     execute_tool_safely,
+    gemini_websearch_called,
+    is_websearch_called,
     openai_websearch_called,
 )
 
@@ -79,4 +81,34 @@ def test_openai_websearch_called_tool_calls_and_none():
 
     assert openai_websearch_called(_ToolCallResp([{"name": "web_search_preview"}])) is True
     assert openai_websearch_called(_ToolCallResp([{"name": "other_tool"}])) is False
+
+
+def test_gemini_and_unified_websearch_called():
+    assert gemini_websearch_called(None) is False
+    assert is_websearch_called(None) is False
+
+    class _GeminiMetaResp:
+        def __init__(self, response_metadata=None, additional_kwargs=None, tool_calls=None):
+            self.response_metadata = response_metadata or {}
+            self.additional_kwargs = additional_kwargs or {}
+            self.tool_calls = tool_calls or []
+
+    # Grounding metadata in response_metadata
+    r1 = _GeminiMetaResp(response_metadata={"grounding_metadata": {"web_search_sources": ["url1"]}})
+    assert gemini_websearch_called(r1) is True
+    assert is_websearch_called(r1) is True
+
+    # Grounding metadata in additional_kwargs
+    r2 = _GeminiMetaResp(additional_kwargs={"groundingMetadata": {"queries": ["q"]}})
+    assert gemini_websearch_called(r2) is True
+
+    # Tool calls with google_search
+    r3 = _GeminiMetaResp(tool_calls=[{"name": "google_search", "args": {"q": "langgraph"}}])
+    assert gemini_websearch_called(r3) is True
+    assert is_websearch_called(r3) is True
+
+    # Negative case
+    r4 = _GeminiMetaResp()
+    assert gemini_websearch_called(r4) is False
+    assert is_websearch_called(r4) is False
 

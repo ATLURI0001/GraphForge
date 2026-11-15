@@ -62,3 +62,8 @@ def test_override_reducer_tuples_and_sets():
     assert override_reducer({"x", "y"}, {"y", "z"}) == {"x", "y", "z"}
     assert override_reducer({"x", "y"}, ["z", "w"]) == {"x", "y", "z", "w"}
     assert override_reducer({"x"}, "y") == {"x", "y"}
+
+    # Frozenset union and scalar append
+    assert override_reducer(frozenset(["a"]), frozenset(["b"])) == frozenset(["a", "b"])
+    assert override_reducer(frozenset(["a"]), ["b", "c"]) == frozenset(["a", "b", "c"])
+    assert override_reducer(frozenset(["a"]), "b") == frozenset(["a", "b"])
