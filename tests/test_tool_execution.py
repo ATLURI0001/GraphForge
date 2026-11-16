@@ -6,7 +6,9 @@ from agents.researcher.utils import (
     execute_tool_safely,
     gemini_websearch_called,
     is_websearch_called,
+    normalize_and_deduplicate_sources,
     openai_websearch_called,
+    sanitize_search_query,
 )
 
 
@@ -111,4 +113,56 @@ def test_gemini_and_unified_websearch_called():
     r4 = _GeminiMetaResp()
     assert gemini_websearch_called(r4) is False
     assert is_websearch_called(r4) is False
+
+
+def test_sanitize_search_query():
+    # Null and empty
+    assert sanitize_search_query(None) == ""
+    assert sanitize_search_query("") == ""
+    assert sanitize_search_query("   ") == ""
+    assert sanitize_search_query(12345) == ""
+    assert sanitize_search_query("query", max_length=0) == ""
+
+    # Whitespace and control character stripping
+    raw = "  \x00langchain\x1f \t\n  graph   deep\r\nresearch  \x7f "
+    assert sanitize_search_query(raw) == "langchain graph deep research"
+
+    # Truncation at word boundary
+    long_query = "autonomous multi-agent system state machine orchestrator architecture design pattern"
+    res = sanitize_search_query(long_query, max_length=45)
+    assert len(res) <= 45
+    assert not res.endswith(" ")
+    assert res == "autonomous multi-agent system state machine"
+
+
+def test_normalize_and_deduplicate_sources():
+    # Empty inputs
+    assert normalize_and_deduplicate_sources(None) == []
+    assert normalize_and_deduplicate_sources([]) == []
+    assert normalize_and_deduplicate_sources(["", "   ", None]) == []
+
+    # Scheme / host lowercase and standard port removal
+    raw_sources = [
+        "HTTP://EXAMPLE.COM:80/path/to/doc?utm_source=twitter&topic=graph#section1",
+        "https://example.com/path/to/doc?topic=graph",
+        {"url": "https://example.com/path/to/doc/?topic=graph&fbclid=123", "title": "Doc Title", "score": 0.95},
+        {"url": "https://other.org/article", "title": "Other Article"},
+    ]
+    deduped = normalize_and_deduplicate_sources(raw_sources)
+    assert len(deduped) == 3
+
+    # Check canonical URL for example.com
+    ex_items = [d for d in deduped if "example.com" in d["url"]]
+    assert len(ex_items) == 2
+    # The one with https should have topic=graph and metadata merged
+    https_item = next(d for d in ex_items if d["url"].startswith("https://"))
+    assert https_item["url"] == "https://example.com/path/to/doc?topic=graph"
+    assert https_item["title"] == "Doc Title"
+    assert https_item["score"] == 0.95
+
+    # Check other.org
+    other_item = next(d for d in deduped if "other.org" in d["url"])
+    assert other_item["url"] == "https://other.org/article"
+    assert other_item["title"] == "Other Article"
+
 
