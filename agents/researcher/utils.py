@@ -3,7 +3,9 @@
 import json
 import logging
 import math
+import re
 from datetime import datetime
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from langchain_core.messages import (
     MessageLikeRepresentation,
@@ -199,3 +201,130 @@ def get_today_str() -> str:
     """Get current date formatted for display."""
     now = datetime.now()
     return f"{now:%a} {now:%b} {now.day}, {now:%Y}"
+
+
+def sanitize_search_query(query: str | None, max_length: int = 400) -> str:
+    """Sanitize and normalize a raw web search query string.
+
+    Performs control character stripping, whitespace normalization, and safe boundary truncation.
+
+    Args:
+        query: Raw search query string.
+        max_length: Maximum allowed character length for the query.
+
+    Returns:
+        Sanitized, normalized query string.
+    """
+    if not query or not isinstance(query, str):
+        return ""
+    if max_length <= 0:
+        return ""
+
+    # Strip non-printable / control characters (ASCII 0x00-0x1F and 0x7F-0x9F) except space
+    cleaned = re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", query)
+    # Collapse multiple whitespace sequences into a single space
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    if len(cleaned) <= max_length:
+        return cleaned
+
+    # Truncate at word boundary if possible within the latter half of max_length
+    truncated = cleaned[:max_length]
+    last_space = truncated.rfind(" ")
+    if last_space > max_length // 2:
+        return truncated[:last_space].strip()
+    return truncated.strip()
+
+
+def normalize_and_deduplicate_sources(
+    sources: list[dict | str] | None,
+    default_title: str = "Untitled Source",
+) -> list[dict]:
+    """Normalize and deduplicate web sources and citations.
+
+    Strips URL fragments, normalizes scheme/host casing, removes common tracking query parameters
+    (e.g., utm_*, ref, fbclid), and merges metadata across identical canonical URLs.
+
+    Args:
+        sources: List of string URLs or source dictionaries containing at least a 'url' key.
+        default_title: Default title applied when a source lacks a title.
+
+    Returns:
+        List of canonicalized, unique source dictionaries.
+    """
+    if not sources:
+        return []
+
+    tracking_params = {
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_term",
+        "utm_content",
+        "ref",
+        "fbclid",
+        "gclid",
+        "ocid",
+        "mc_cid",
+        "mc_eid",
+    }
+
+    seen: dict[str, dict] = {}
+
+    for item in sources:
+        if not item:
+            continue
+        if isinstance(item, str):
+            raw_url = item.strip()
+            data = {"url": raw_url, "title": default_title}
+        elif isinstance(item, dict):
+            raw_url = str(item.get("url", "")).strip()
+            data = dict(item)
+            if not data.get("title"):
+                data["title"] = default_title
+        else:
+            continue
+
+        if not raw_url:
+            continue
+
+        try:
+            parsed = urlparse(raw_url)
+            if not parsed.scheme or not parsed.netloc:
+                continue
+
+            scheme = parsed.scheme.lower()
+            netloc = parsed.netloc.lower()
+
+            # Remove standard default port
+            if scheme == "http" and netloc.endswith(":80"):
+                netloc = netloc[:-3]
+            elif scheme == "https" and netloc.endswith(":443"):
+                netloc = netloc[:-4]
+
+            path = parsed.path or "/"
+            if len(path) > 1 and path.endswith("/"):
+                path = path.rstrip("/")
+
+            # Filter tracking query parameters
+            query_pairs = parse_qsl(parsed.query, keep_blank_values=False)
+            filtered_pairs = [(k, v) for k, v in query_pairs if k.lower() not in tracking_params]
+            clean_query = urlencode(filtered_pairs)
+
+            canonical_url = urlunparse((scheme, netloc, path, "", clean_query, ""))
+
+            if canonical_url not in seen:
+                data["url"] = canonical_url
+                seen[canonical_url] = data
+            else:
+                # Merge metadata: prefer non-default title, retain additional keys
+                existing = seen[canonical_url]
+                if existing.get("title") == default_title and data.get("title") != default_title:
+                    existing["title"] = data["title"]
+                for k, v in data.items():
+                    if k not in existing and v is not None:
+                        existing[k] = v
+        except Exception:
+            continue
+
+    return list(seen.values())
