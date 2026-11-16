@@ -328,3 +328,90 @@ def normalize_and_deduplicate_sources(
             continue
 
     return list(seen.values())
+
+
+def format_citation_markdown(
+    sources: list[dict] | None,
+    max_citations: int = 20,
+) -> str:
+    """Format canonical sources into numbered Markdown bibliographic citations.
+
+    Args:
+        sources: List of source dictionaries containing 'url' and optionally 'title'.
+        max_citations: Maximum citations to render (clamped between 1 and 100).
+
+    Returns:
+        Formatted markdown citation text.
+    """
+    if not sources or not isinstance(sources, list):
+        return ""
+    if max_citations <= 0:
+        return ""
+    max_citations = min(100, max_citations)
+
+    lines: list[str] = []
+    count = 0
+    for item in sources:
+        if not isinstance(item, dict):
+            continue
+        raw_url = str(item.get("url", "")).strip()
+        if not raw_url:
+            continue
+        title = str(item.get("title") or "Untitled Source").strip()
+        # Escape markdown square brackets in title
+        escaped_title = title.replace("[", r"\[").replace("]", r"\]")
+        count += 1
+        lines.append(f"[{count}] [{escaped_title}]({raw_url})")
+        if count >= max_citations:
+            break
+
+    return "\n".join(lines)
+
+
+def calculate_citation_diversity(sources: list[dict] | None) -> dict:
+    """Calculate domain distribution and diversity metrics across research sources.
+
+    Args:
+        sources: List of source dictionaries with 'url' keys.
+
+    Returns:
+        Dictionary with total_sources, unique_domains, domain_distribution, and diversity_ratio.
+    """
+    if not sources or not isinstance(sources, list):
+        return {
+            "total_sources": 0,
+            "unique_domains": 0,
+            "domain_distribution": {},
+            "diversity_ratio": 0.0,
+        }
+
+    distribution: dict[str, int] = {}
+    total = 0
+
+    for item in sources:
+        if not isinstance(item, dict):
+            continue
+        raw_url = str(item.get("url", "")).strip()
+        if not raw_url:
+            continue
+        try:
+            parsed = urlparse(raw_url)
+            host = parsed.netloc.lower()
+            if not host:
+                continue
+            if ":" in host:
+                host = host.split(":", 1)[0]
+            distribution[host] = distribution.get(host, 0) + 1
+            total += 1
+        except Exception:
+            continue
+
+    unique_domains = len(distribution)
+    ratio = round(unique_domains / total, 2) if total > 0 else 0.0
+
+    return {
+        "total_sources": total,
+        "unique_domains": unique_domains,
+        "domain_distribution": distribution,
+        "diversity_ratio": ratio,
+    }

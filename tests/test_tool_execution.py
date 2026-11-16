@@ -4,6 +4,8 @@ from langchain_core.messages import ToolMessage
 from agents.researcher.utils import (
     anthropic_websearch_called,
     execute_tool_safely,
+    calculate_citation_diversity,
+    format_citation_markdown,
     gemini_websearch_called,
     is_websearch_called,
     normalize_and_deduplicate_sources,
@@ -164,5 +166,44 @@ def test_normalize_and_deduplicate_sources():
     other_item = next(d for d in deduped if "other.org" in d["url"])
     assert other_item["url"] == "https://other.org/article"
     assert other_item["title"] == "Other Article"
+
+
+def test_format_citation_markdown():
+    sources = [
+        {"url": "https://example.com/a", "title": "Alpha [Guide]"},
+        {"url": "https://example.com/b", "title": "Beta Overview"},
+        {"url": "https://example.com/c"},  # missing title fallback
+    ]
+    formatted = format_citation_markdown(sources, max_citations=2)
+    lines = formatted.splitlines()
+    assert len(lines) == 2
+    assert lines[0] == r"[1] [Alpha \[Guide\]](https://example.com/a)"
+    assert lines[1] == "[2] [Beta Overview](https://example.com/b)"
+
+    # Empty fallback
+    assert format_citation_markdown([]) == ""
+    assert format_citation_markdown(None) == ""
+
+
+def test_calculate_citation_diversity():
+    sources = [
+        {"url": "https://arxiv.org/abs/1234"},
+        {"url": "https://arxiv.org/pdf/1234.pdf"},
+        {"url": "https://github.com/repo/test"},
+        {"url": "https://nature.com/articles/456"},
+    ]
+    metrics = calculate_citation_diversity(sources)
+    assert metrics["total_sources"] == 4
+    assert metrics["unique_domains"] == 3
+    assert metrics["domain_distribution"] == {
+        "arxiv.org": 2,
+        "github.com": 1,
+        "nature.com": 1,
+    }
+    assert metrics["diversity_ratio"] == 0.75
+
+    empty_metrics = calculate_citation_diversity([])
+    assert empty_metrics["total_sources"] == 0
+    assert empty_metrics["diversity_ratio"] == 0.0
 
 
