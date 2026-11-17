@@ -5,6 +5,8 @@ from agents.researcher.utils import (
     anthropic_websearch_called,
     execute_tool_safely,
     calculate_citation_diversity,
+    extract_academic_identifiers,
+    filter_sources_by_allowed_domains,
     format_citation_markdown,
     gemini_websearch_called,
     is_websearch_called,
@@ -205,5 +207,53 @@ def test_calculate_citation_diversity():
     empty_metrics = calculate_citation_diversity([])
     assert empty_metrics["total_sources"] == 0
     assert empty_metrics["diversity_ratio"] == 0.0
+
+
+def test_filter_sources_by_allowed_domains():
+    sources = [
+        {"url": "https://arxiv.org/abs/1234", "title": "Paper 1"},
+        {"url": "https://en.wikipedia.org/wiki/Test", "title": "Wiki"},
+        {"url": "https://untrusted.com/blog", "title": "Untrusted"},
+        {"url": "not-a-url"},
+        "invalid-item",
+    ]
+    filtered = filter_sources_by_allowed_domains(
+        sources, ["arxiv.org", "wikipedia.org"], allow_subdomains=True
+    )
+    assert len(filtered) == 2
+    assert [s["title"] for s in filtered] == ["Paper 1", "Wiki"]
+
+    strict = filter_sources_by_allowed_domains(
+        sources, ["wikipedia.org"], allow_subdomains=False
+    )
+    assert len(strict) == 0
+
+    assert filter_sources_by_allowed_domains([], ["arxiv.org"]) == []
+    assert filter_sources_by_allowed_domains(None, ["arxiv.org"]) == []
+    assert filter_sources_by_allowed_domains(sources, []) == []
+    assert filter_sources_by_allowed_domains(sources, None) == []
+
+
+def test_extract_academic_identifiers():
+    text = (
+        "References: 10.1038/s41586-020-2649-2 and arXiv:2305.18290v2. "
+        "Also see pmid: 32840742 and duplicate 10.1038/s41586-020-2649-2."
+    )
+    res = extract_academic_identifiers(text)
+    assert res["dois"] == ["10.1038/s41586-020-2649-2"]
+    assert res["arxiv_ids"] == ["2305.18290v2"]
+    assert res["pmids"] == ["32840742"]
+
+    assert extract_academic_identifiers(None) == {
+        "dois": [],
+        "arxiv_ids": [],
+        "pmids": [],
+    }
+    assert extract_academic_identifiers("") == {
+        "dois": [],
+        "arxiv_ids": [],
+        "pmids": [],
+    }
+
 
 
