@@ -415,3 +415,87 @@ def calculate_citation_diversity(sources: list[dict] | None) -> dict:
         "domain_distribution": distribution,
         "diversity_ratio": ratio,
     }
+
+
+def filter_sources_by_allowed_domains(
+    sources: list[dict] | None,
+    allowed_domains: list[str] | set[str] | None,
+    allow_subdomains: bool = True,
+) -> list[dict]:
+    """Filter sources against an allowed set of domain hostnames.
+
+    Args:
+        sources: List of source dictionaries with 'url' keys.
+        allowed_domains: Iterable of allowed domain hostnames.
+        allow_subdomains: If True, subdomains of allowed domains will match (e.g. en.wikipedia.org -> wikipedia.org).
+
+    Returns:
+        Filtered list of sources originating exclusively from allowed domains.
+    """
+    if not sources or not isinstance(sources, list):
+        return []
+    if not allowed_domains:
+        return []
+
+    normalized_domains = {
+        d.strip().lower() for d in allowed_domains if isinstance(d, str) and d.strip()
+    }
+    if not normalized_domains:
+        return []
+
+    filtered: list[dict] = []
+    for item in sources:
+        if not isinstance(item, dict):
+            continue
+        raw_url = str(item.get("url", "")).strip()
+        if not raw_url:
+            continue
+        try:
+            parsed = urlparse(raw_url)
+            host = parsed.netloc.lower()
+            if not host:
+                continue
+            if ":" in host:
+                host = host.split(":", 1)[0]
+
+            matched = False
+            if host in normalized_domains:
+                matched = True
+            elif allow_subdomains:
+                for domain in normalized_domains:
+                    if host.endswith("." + domain):
+                        matched = True
+                        break
+            if matched:
+                filtered.append(item)
+        except Exception:
+            continue
+
+    return filtered
+
+
+def extract_academic_identifiers(text: str | None) -> dict[str, list[str]]:
+    """Extract and deduplicate standard academic identifiers (DOIs, arXiv IDs, PMIDs) from text.
+
+    Args:
+        text: Input markdown or plain-text document.
+
+    Returns:
+        Dictionary mapping identifier categories ('dois', 'arxiv_ids', 'pmids') to sorted lists of identifiers.
+    """
+    if not text or not isinstance(text, str):
+        return {"dois": [], "arxiv_ids": [], "pmids": []}
+
+    doi_pattern = r"\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b"
+    arxiv_pattern = r"(?i)\barxiv:\s*([0-9]{4}\.[0-9]{4,5}(?:v[0-9]+)?)\b"
+    pmid_pattern = r"(?i)\bpmid:?\s*([0-9]{7,9})\b"
+
+    dois = sorted(set(re.findall(doi_pattern, text)))
+    arxiv_ids = sorted(set(re.findall(arxiv_pattern, text)))
+    pmids = sorted(set(re.findall(pmid_pattern, text)))
+
+    return {
+        "dois": dois,
+        "arxiv_ids": arxiv_ids,
+        "pmids": pmids,
+    }
